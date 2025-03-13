@@ -10,11 +10,13 @@ Uso:
     python main.py map <url> [--test] [--output DIR] [--concurrent NUM] [--rate NUM]
     python main.py format <csv_file> [--output DIR] [--site_prefix NAME]
     python main.py full <url> [--test] [--output DIR] [--site_prefix NAME]
+    python main.py gui - Inicia a interface gráfica
 
 Exemplos:
     python main.py map https://tarf.economia.df.gov.br --output ./resultados
     python main.py format mapeamento.csv --site_prefix "Tribunal Administrativo de Recursos Fiscais"
     python main.py full https://tarf.economia.df.gov.br --site_prefix "Tribunal Administrativo de Recursos Fiscais"
+    python main.py gui
 """
 
 import os
@@ -63,6 +65,7 @@ def extract_domain(url):
     
     return site_name
 
+
 def setup_directories(base_dir="output", site_name=None):
     """Configura os diretórios necessários para output."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -73,13 +76,26 @@ def setup_directories(base_dir="output", site_name=None):
     else:
         output_dir = f"{base_dir}/{timestamp}"
     
-    # Criar diretórios
+    # Garantir que o diretório base exista
+    os.makedirs(base_dir, exist_ok=True)
+    
+    # Criar diretórios de saída
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(f"{output_dir}/raw", exist_ok=True)
     os.makedirs(f"{output_dir}/formatted", exist_ok=True)
     
     logger.info(f"Diretórios criados em: {output_dir}")
     return output_dir, timestamp
+
+def ensure_directories():
+    """Garantir que os diretórios necessários existam."""
+    # Diretório de logs
+    os.makedirs("logs", exist_ok=True)
+    
+    # Diretório de saída padrão
+    os.makedirs("output", exist_ok=True)
+    
+    logger.info("Diretórios de sistema verificados")
 
 async def run_mapping(url, output_dir, test_mode=False, concurrent=10, rate=5):
     """
@@ -102,6 +118,10 @@ async def run_mapping(url, output_dir, test_mode=False, concurrent=10, rate=5):
     site_name = extract_domain(url)
     
     try:
+        # Garantir que o diretório raw exista
+        raw_dir = f"{output_dir}/raw"
+        os.makedirs(raw_dir, exist_ok=True)
+        
         # Executar o mapeador
         await run_mapper(
             url=url,
@@ -121,7 +141,7 @@ async def run_mapping(url, output_dir, test_mode=False, concurrent=10, rate=5):
         csv_path = os.path.join("logs", latest_csv)
         
         # Copiar para o diretório de saída raw com o nome do site
-        output_csv = f"{output_dir}/raw/{site_name}_mapeamento.csv"
+        output_csv = f"{raw_dir}/{site_name}_mapeamento.csv"
         shutil.copy(csv_path, output_csv)
         
         elapsed_time = time.time() - start_time
@@ -131,7 +151,7 @@ async def run_mapping(url, output_dir, test_mode=False, concurrent=10, rate=5):
         return output_csv
         
     except Exception as e:
-        logger.error(f"Erro durante o mapeamento: {e}", exc_info=True)
+        logger.error(f"Erro durante o mapeamento: {str(e)}", exc_info=True)
         return None
 
 def run_formatting(csv_path, output_dir, site_prefix=None, site_name=None):
@@ -154,6 +174,15 @@ def run_formatting(csv_path, output_dir, site_prefix=None, site_name=None):
     start_time = time.time()
     
     try:
+        # Verificar se o arquivo existe
+        if not os.path.exists(csv_path):
+            logger.error(f"Arquivo CSV não encontrado: {csv_path}")
+            return None, None
+            
+        # Garantir que o diretório formatted exista
+        formatted_dir = f"{output_dir}/formatted"
+        os.makedirs(formatted_dir, exist_ok=True)
+        
         # Se não temos o nome do site, tentamos extrair do caminho do CSV
         if not site_name and '_mapeamento.csv' in csv_path:
             site_name = os.path.basename(csv_path).split('_mapeamento.csv')[0]
@@ -161,7 +190,7 @@ def run_formatting(csv_path, output_dir, site_prefix=None, site_name=None):
         # Executa o formatador original
         formatter = PlanilhaFormatter(
             input_csv=csv_path,
-            output_dir=f"{output_dir}/formatted",
+            output_dir=formatted_dir,
             site_prefix=site_prefix
         )
         
@@ -172,7 +201,6 @@ def run_formatting(csv_path, output_dir, site_prefix=None, site_name=None):
             return None, None
             
         # Procurar pelos arquivos gerados
-        formatted_dir = f"{output_dir}/formatted"
         csv_files = [f for f in os.listdir(formatted_dir) if f.endswith('.csv')]
         excel_files = [f for f in os.listdir(formatted_dir) if f.endswith('.xlsx')]
         
@@ -273,6 +301,7 @@ Exemplos:
   python main.py map https://tarf.economia.df.gov.br --output ./resultados
   python main.py format mapeamento.csv --site_prefix "Tribunal Administrativo de Recursos Fiscais"
   python main.py full https://tarf.economia.df.gov.br --site_prefix "Tribunal Administrativo de Recursos Fiscais"
+  python main.py gui
         """
     )
     
@@ -302,6 +331,9 @@ Exemplos:
     full_parser.add_argument('--concurrent', type=int, default=10, help='Requisições concorrentes')
     full_parser.add_argument('--rate', type=int, default=5, help='Requisições por segundo')
     
+    # Comando 'gui' para a interface gráfica
+    gui_parser = subparsers.add_parser('gui', help='Iniciar a interface gráfica')
+    
     return parser.parse_args()
 
 async def main_async():
@@ -309,9 +341,21 @@ async def main_async():
     args = parse_arguments()
     
     if not args.command:
-        logger.error("Nenhum comando especificado. Use 'map', 'format' ou 'full'.")
+        logger.error("Nenhum comando especificado. Use 'map', 'format', 'full' ou 'gui'.")
         sys.exit(1)
     
+    # Verificar se o comando é gui
+    if args.command == 'gui':
+        try:
+            # Importar e iniciar a interface gráfica
+            from gui import main as gui_main
+            return gui_main()
+        except ImportError as e:
+            logger.error(f"Erro ao importar módulo da interface gráfica: {e}")
+            logger.error("Verifique se o arquivo gui.py está no mesmo diretório.")
+            sys.exit(1)
+    
+    # Continuar com a lógica existente para outros comandos
     # Extrair nome do site para o diretório, se for um comando que usa URL
     site_name = None
     if args.command in ['map', 'full']:
@@ -373,6 +417,9 @@ async def main_async():
 def main():
     """Função principal."""
     try:
+        # Garantir que diretórios básicos existam
+        ensure_directories()
+        
         if sys.platform == 'win32':
             asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
         asyncio.run(main_async())
@@ -381,6 +428,5 @@ def main():
     except Exception as e:
         logger.error(f"Erro durante a execução: {e}", exc_info=True)
         sys.exit(1)
-
 if __name__ == '__main__':
     main()

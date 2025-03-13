@@ -367,17 +367,44 @@ class MapeadorGUI(tk.Tk):
             messagebox.showerror("Processo em andamento", "Já existe um processo em execução. Aguarde ou interrompa-o.")
             return
             
+        # Limpar campos de entrada (remover espaços em branco indesejados)
+        self.url_var.set(self.url_var.get().strip())
+        self.csv_file_var.set(self.csv_file_var.get().strip())
+        
         # Validar entradas conforme o comando
         if command in ['map', 'full']:
-            if not self.url_var.get().strip():
+            if not self.url_var.get():
                 messagebox.showerror("Erro", "Por favor, informe a URL do site.")
                 return
+            
+            # Validar formato da URL
+            url = self.url_var.get()
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+                self.url_var.set(url)
                 
         if command == 'format':
-            if not self.csv_file_var.get().strip():
+            if not self.csv_file_var.get():
                 messagebox.showerror("Erro", "Por favor, selecione um arquivo CSV.")
                 return
-                
+            
+            if not os.path.exists(self.csv_file_var.get()):
+                messagebox.showerror("Erro", f"O arquivo CSV selecionado não existe: {self.csv_file_var.get()}")
+                return
+        
+        # Verificar diretório de saída
+        output_dir = self.output_dir_var.get().strip()
+        if not output_dir:
+            output_dir = os.path.join(os.getcwd(), "output")
+            self.output_dir_var.set(output_dir)
+        
+        # Garantir que o diretório de saída exista
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível criar o diretório de saída:\n{str(e)}")
+            return
+        
         # Iniciar execução em uma thread separada
         self.running = True
         self.update_status(f"Executando: {command}")
@@ -573,4 +600,77 @@ class MapeadorGUI(tk.Tk):
         if theme_name == "default":
             # Restaurar tema padrão do sistema
             self.style.theme_use('default')
-            self.log_text.config(bg="white")
+            self.log_text.config(bg="white", fg="black")
+        elif theme_name == "light":
+            # Tema claro
+            self.style.theme_use('clam')
+            self.log_text.config(bg="white", fg="black")
+            self.configure(background="#f0f0f0")
+        elif theme_name == "dark":
+            # Tema escuro simples
+            self.style.theme_use('clam')
+            self.configure(background="#333333")
+            self.log_text.config(bg="#2d2d2d", fg="#e0e0e0")
+            
+            # Configurar cores para o tema escuro
+            self.style.configure(".", 
+                                foreground="#e0e0e0", 
+                                background="#333333",
+                                fieldbackground="#2d2d2d")
+            self.style.configure("TLabel", foreground="#e0e0e0", background="#333333")
+            self.style.configure("TButton", foreground="black", background="#555555")
+            self.style.configure("TFrame", background="#333333")
+            self.style.configure("TLabelframe", background="#333333", foreground="#e0e0e0")
+            self.style.configure("TLabelframe.Label", foreground="#e0e0e0", background="#333333")
+            self.style.configure("TNotebook", background="#2d2d2d", foreground="#e0e0e0")
+            self.style.map("TNotebook.Tab", 
+                           background=[("selected", "#555555"), ("!selected", "#2d2d2d")],
+                           foreground=[("selected", "#ffffff"), ("!selected", "#cccccc")])
+            
+    def restore_defaults(self):
+        """Restaurar configurações padrão"""
+        self.concurrent_var.set(10)
+        self.rate_var.set(5)
+        self.test_mode_var.set(False)
+        self.output_dir_var.set(os.path.join(os.getcwd(), "output"))
+        self.set_theme("default")
+        logger.info("Configurações restauradas para padrões")
+            
+    def show_about(self):
+        """Mostrar diálogo de informações sobre o programa"""
+        about_text = """
+Mapeador e Formatador de Sites v1.0
+
+Uma ferramenta para mapear sites e formatar os resultados
+em planilhas Excel com hierarquia padronizada.
+
+Desenvolvido para facilitar o mapeamento e migração de sites.
+"""
+        messagebox.showinfo("Sobre", about_text)
+        
+    def show_documentation(self):
+        """Abrir documentação do programa"""
+        messagebox.showinfo("Documentação", 
+                           "A documentação completa não está disponível nesta versão.")
+        
+    def on_closing(self):
+        """Tratar o fechamento da aplicação"""
+        if self.running:
+            if not messagebox.askyesno("Confirmar saída", 
+                                      "Existe um processo em execução. Deseja realmente sair?"):
+                return
+                
+        logger.info("Encerrando a aplicação")
+        self.destroy()
+
+def main():
+    """Função principal da interface"""
+    try:
+        app = MapeadorGUI()
+        app.mainloop()
+    except Exception as e:
+        logger.critical(f"Erro fatal na interface: {str(e)}", exc_info=True)
+        messagebox.showerror("Erro Fatal", f"Ocorreu um erro crítico:\n\n{str(e)}")
+        
+if __name__ == "__main__":
+    main()
